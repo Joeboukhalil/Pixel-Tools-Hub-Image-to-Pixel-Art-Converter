@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pixel Art Converter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f5f5f7;
+            font-family: "Segoe UI", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: #ffffff;
+            width: 90%;
+            max-width: 600px;
+            margin-top: 40px;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0px 8px 25px rgba(0,0,0,0.12);
+            text-align: center;
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 26px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            border-radius: 8px;
+            background: #e9e9ee;
+            border: 1px solid #d0d0d5;
+            cursor: pointer;
+        }
+
+        .control-group {
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        label {
+            font-weight: 600;
+            color: #444;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin-top: 6px;
+        }
+
+        canvas {
+            margin-top: 25px;
+            border-radius: 12px;
+            border: 1px solid #ccc;
+            max-width: 100%;
+            image-rendering: pixelated;
+            background: #fafafa;
+        }
+
+        button {
+            margin-top: 25px;
+            padding: 12px 22px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            background: #4a74ff;
+            color: white;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.15);
+            transition: 0.25s;
+        }
+
+        button:hover {
+            background: #365df8;
+            box-shadow: 0px 6px 14px rgba(0,0,0,0.2);
+        }
+
+        button:active {
+            transform: scale(0.97);
+        }
+
+        .link-button {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 22px;
+            font-weight: 600;
+            color: white;
+            background: #28a745;
+            text-decoration: none;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.15);
+            transition: 0.25s;
+        }
+
+        .link-button:hover {
+            background: #218838;
+            box-shadow: 0px 6px 14px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Pixel Art Converter</h2>
+
+        <input type="file" id="upload" accept="image/*">
+
+        <div class="control-group">
+            <label>Pixel Size: <span id="pixelValue">12</span> px</label>
+            <input type="range" id="pixelSize" min="2" max="60" value="12">
+        </div>
+
+        <button id="downloadBtn">Download as PNG</button>
+
+        <!-- 🔗 LINK TO SECOND PAGE AS A BUTTON -->
+        <a href="image to pixel/index.html" class="link-button">
+            Go to Image to Pixel Page
+        </a>
+
+        <canvas id="pixelCanvas"></canvas>
+    </div>
+
+    <script>
+        const upload = document.getElementById("upload");
+        const pixelCanvas = document.getElementById("pixelCanvas");
+        const pixelSizeInput = document.getElementById("pixelSize");
+        const pixelValue = document.getElementById("pixelValue");
+        const downloadBtn = document.getElementById("downloadBtn");
+        const ctx = pixelCanvas.getContext("2d");
+
+        let img = new Image();
+
+        pixelSizeInput.oninput = () => {
+            pixelValue.textContent = pixelSizeInput.value;
+            if (img.src) pixelate();
+        };
+
+        upload.onchange = (e) => {
+            let file = e.target.files[0];
+            if (!file) return;
+
+            let reader = new FileReader();
+            reader.onload = () => {
+                img.onload = () => pixelate();
+                img.src = reader.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function pixelate() {
+            const pixelSize = parseInt(pixelSizeInput.value);
+
+            const w = img.width;
+            const h = img.height;
+
+            pixelCanvas.width = w;
+            pixelCanvas.height = h;
+
+            const temp = document.createElement("canvas");
+            const tctx = temp.getContext("2d");
+
+            const smallW = Math.ceil(w / pixelSize);
+            const smallH = Math.ceil(h / pixelSize);
+
+            temp.width = smallW;
+            temp.height = smallH;
+
+            tctx.imageSmoothingEnabled = false;
+            tctx.drawImage(img, 0, 0, smallW, smallH);
+
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(temp, 0, 0, smallW, smallH, 0, 0, w, h);
+        }
+
+        downloadBtn.onclick = () => {
+            const link = document.createElement("a");
+            link.download = "pixel_image.png";
+            link.href = pixelCanvas.toDataURL("image/png");
+            link.click();
+        };
+    </script>
+
+</body>
+</html>
