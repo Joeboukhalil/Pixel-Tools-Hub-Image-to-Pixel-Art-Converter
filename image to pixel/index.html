@@ -11,8 +11,9 @@
     .row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
     canvas, img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 8px; }
     .preview { display: grid; gap: 1rem; grid-template-columns: 1fr 1fr; align-items: start; }
-    .btns { display: flex; gap: .75rem; flex-wrap: wrap; }
-    button { padding: .5rem .9rem; border-radius: 6px; border: 1px solid #888; background: #f3f3f3; cursor: pointer; }
+    .btns { display: flex; gap: .75rem; flex-wrap: wrap; flex-direction: column; }
+    button, .main-link { padding: .5rem .9rem; border-radius: 6px; border: 1px solid #888; background: #f3f3f3; cursor: pointer; text-decoration: none; color: black; text-align: center; }
+    button:hover, .main-link:hover { background: #ddd; }
     input[type="range"] { width: 200px; }
     small { color: #666; }
   </style>
@@ -26,6 +27,9 @@
     <div class="btns">
       <button id="download" disabled>Download PNG</button>
       <button id="reset" disabled>Reset</button>
+
+      <!-- LINK TO MAIN PIXEL TO IMAGE -->
+      <a href="../index.html" class="main-link">Main Pixel to Image</a>
     </div>
   </div>
 
@@ -104,6 +108,157 @@
       if (!imgBitmap) return;
       const p = parseInt(pixelSize.value, 10);
       const s = parseInt(scale.value, 10);
+      const pal = parseInt(paletteSize.value, 10);
+
+      const w = imgBitmap.width;
+      const h = imgBitmap.height;
+
+      const gridW = Math.max(1, Math.floor(w / p));
+      const gridH = Math.max(1, Math.floor(h / p));
+
+      const off = new OffscreenCanvas(gridW, gridH);
+      const offCtx = off.getContext('2d', { willReadFrequently: true });
+      offCtx.imageSmoothingEnabled = false;
+      offCtx.drawImage(imgBitmap, 0, 0, gridW, gridH);
+
+      const imgData = offCtx.getImageData(0, 0, gridW, gridH);
+      const quantized = quantizeImage(imgData, pal);
+
+      canvas.width = gridW * p * s;
+      canvas.height = gridH * p * s;
+      ctx.imageSmoothingEnabled = false;
+
+      const temp = new OffscreenCanvas(gridW, gridH);
+      const tempCtx = temp.getContext('2d', { willReadFrequently: true });
+      tempCtx.putImageData(quantized, 0, 0);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(temp, 0, 0, canvas.width, canvas.height);
+
+      if (sharpen.checked) {
+        applyUnsharpMask(ctx, canvas.width, canvas.height);
+      }
+    }
+
+    function quantizeImage(imageData, k = 24, iterations = 6) {
+      const { data, width, height } = imageData;
+      const pixels = [];
+      for (let i = 0; i < data.length; i += 4) {
+        pixels.push([data[i], data[i + 1], data[i + 2]]);
+      }
+
+      const centers = [];
+      const step = Math.max(1, Math.floor(pixels.length / k));
+      for (let i = 0; i < pixels.length && centers.length < k; i += step) {
+        centers.push(pixels[i].slice());
+      }
+
+      for (let it = 0; it < iterations; it++) {
+        const sums = Array.from({ length: centers.length }, () => [0, 0, 0, 0]);
+        for (const px of pixels) {
+          let minIdx = 0, minDist = Infinity;
+          for (let c = 0; c < centers.length; c++) {
+            const dR = px[0] - centers[c][0];
+            const dG = px[1] - centers[c][1];
+            const dB = px[2] - centers[c][2];
+            const dist = dR * dR + dG * dG + dB * dB;
+            if (dist < minDist) { minDist = dist; minIdx = c; }
+          }
+          sums[minIdx][0] += px[0];
+          sums[minIdx][1] += px[1];
+          sums[minIdx][2] += px[2];
+          sums[minIdx][3] += 1;
+        }
+        for (let c = 0; c < centers.length; c++) {
+          const count = sums[c][3] || 1;
+          centers[c][0] = Math.round(sums[c][0] / count);
+          centers[c][1] = Math.round(sums[c][1] / count);
+          centers[c][2] = Math.round(sums[c][2] / count);
+        }
+      }
+
+      const out = new ImageData(width, height);
+      for (let i = 0, p = 0; i < out.data.length; i += 4, p++) {
+        const px = pixels[p];
+        let minIdx = 0, minDist = Infinity;
+        for (let c = 0; c < centers.length; c++) {
+          const dR = px[0] - centers[c][0];
+          const dG = px[1] - centers[c][1];
+          const dB = px[2] - centers[c][2];
+          const dist = dR * dR + dG * dG + dB * dB;
+          if (dist < minDist) { minDist = dist; minIdx = c; }
+        }
+        const c = centers[minIdx];
+        out.data[i] = c[0];
+        out.data[i + 1] = c[1];
+        out.data[i + 2] = c[2];
+        out.data[i + 3] = 255;
+      }
+      return out;
+    }
+
+    function applyUnsharpMask(ctx, w, h) {
+      const src = ctx.getImageData(0, 0, w, h);
+      const blurred = boxBlur(src, w, h, 1);
+      const out = ctx.createImageData(w, h);
+      const amount = 0.6;
+      for (let i = 0; i < src.data.length; i += 4) {
+        out.data[i]     = clamp(src.data[i]     + amount * (src.data[i]     - blurred.data[i]));
+        out.data[i + 1] = clamp(src.data[i + 1] + amount * (src.data[i + 1] - blurred.data[i + 1]));
+        out.data[i + 2] = clamp(src.data[i + 2] + amount * (src.data[i + 2] - blurred.data[i + 2]));
+        out.data[i + 3] = 255;
+      }
+      ctx.putImageData(out, 0, 0);
+    }
+
+    function boxBlur(imageData, w, h, radius) {
+      const out = new ImageData(w, h);
+      const src = imageData.data, dst = out.data;
+      const r = radius;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let sumR = 0, sumG = 0, sumB = 0, count = 0;
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              const nx = x + dx, ny = y + dy;
+              if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                const i = (ny * w + nx) * 4;
+                sumR += src[i];
+                sumG += src[i + 1];
+                sumB += src[i + 2];
+                count++;
+              }
+            }
+          }
+          const o = (y * w + x) * 4;
+          dst[o]     = Math.round(sumR / count);
+          dst[o + 1] = Math.round(sumG / count);
+          dst[o + 2] = Math.round(sumB / count);
+          dst[o + 3] = 255;
+        }
+      }
+      return out;
+    }
+
+    function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+    fileInput.addEventListener('change', e => {
+      const f = e.target.files?.[0];
+      if (f) loadImage(f);
+    });
+    [pixelSize, paletteSize, scale, sharpen].forEach(el => {
+      el.addEventListener('input', () => { updateLabels(); render(); });
+    });
+    downloadBtn.addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'pixelated.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+    resetBtn.addEventListener('click', () => {
+      pixelSize.value = 12;
+      paletteSize.value = 24;
+      scale.      const s = parseInt(scale.value, 10);
       const pal = parseInt(paletteSize.value, 10);
 
       // Step 1: draw original to offscreen
